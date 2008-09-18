@@ -181,6 +181,35 @@ module ScottBarron                   #:nodoc:
           Symbol === action ? self.method(action).call : action.call(self)
         end
         private :run_transition_action
+        
+        def event=(event_name)
+          self.send( (event_name.to_s+'!').to_sym )
+        end
+    
+        def event
+          ev = valid_events
+          return ev ? ev.first : nil
+        end
+        
+        def event_states_table
+          t = {}
+          state_events_table.each do |k,v|
+            v.each do |vi|
+              t[vi] ||= []
+              t[vi].push k
+            end
+          end
+          t
+        end
+
+        def valid_events_from_state(from_state)
+          return state_events_table[from_state]
+        end
+        
+        def valid_events
+          valid_events_from_state(current_state)
+        end
+        
       end
 
       module ClassMethods
@@ -219,9 +248,10 @@ module ScottBarron                   #:nodoc:
         def event(event, opts={}, &block)
           tt = read_inheritable_attribute(:transition_table)
           state_events_table = read_inheritable_attribute(:state_events_table)          
-          
+
           et = read_inheritable_attribute(:event_table)
           e = et[event.to_sym] = SupportingClasses::Event.new(event, opts, tt, state_events_table, &block)
+
           define_method("#{event.to_s}!") { e.fire(self) }
         end
         
