@@ -5,24 +5,24 @@ module ScottBarron                   #:nodoc:
       end
       class NoInitialState < Exception #:nodoc:
       end
-      
+
       def self.included(base)        #:nodoc:
         base.extend ActMacro
       end
-      
+
       module SupportingClasses
         class State
           attr_reader :name, :opts
-        
+
           def initialize(name, opts)
             @name, @opts = name, opts
           end
-        
+
           def entering(record)
             enteract = @opts[:enter]
             record.send(:run_transition_action, enteract) if enteract
           end
-        
+
           def entered(record)
             afteractions = @opts[:after]
             return unless afteractions
@@ -30,7 +30,7 @@ module ScottBarron                   #:nodoc:
               record.send(:run_transition_action, afteract)
             end
           end
-        
+
           def exited(record)
             exitact  = @opts[:exit]
             record.send(:run_transition_action, exitact) if exitact
@@ -39,16 +39,16 @@ module ScottBarron                   #:nodoc:
 
         class StateTransition
           attr_reader :from, :to, :opts
-          
+
           def initialize(opts)
             @from, @to, @event, @guard = opts[:from], opts[:to], opts[:event], opts[:guard]
             @opts = opts
           end
-          
+
           def guard(obj)
             @guard ? obj.send(:run_transition_action, @guard) : true
           end
-                    
+
           def perform(record)
             valid = true
             valid = record.valid? if record.class.read_inheritable_attribute(:validate_on_transitions)
@@ -73,12 +73,12 @@ module ScottBarron                   #:nodoc:
             end
           end
 
-          
+
           def ==(obj)
             @from == obj.from && @to == obj.to
           end
         end
-        
+
         class Event
           attr_reader :name
           attr_reader :transitions
@@ -96,19 +96,22 @@ module ScottBarron                   #:nodoc:
             @transitions.freeze
             freeze
           end
-          
+
           def next_states(record)
             @transitions.select { |t| t.from == record.current_state }
           end
-          
+
           def fire(record)
             result = next_states(record).each do |transition|
               break true if transition.perform(record)
             end
-            raise ActiveRecord::RecordInvalid.new(record) unless result == true
+						unless result == true
+							record.errors.add('', "Could not perform state machine transition: #{name}")
+            	raise ActiveRecord::RecordInvalid.new(record)
+						end
             true
           end
-          
+
           def transitions(trans_opts)
             Array(trans_opts[:from]).each do |s|
               @transitions << SupportingClasses::StateTransition.new(trans_opts.merge({:from => s.to_sym, :event => @name}))
@@ -125,14 +128,14 @@ module ScottBarron                   #:nodoc:
         def acts_as_state_machine(opts)
           self.extend(ClassMethods)
           raise NoInitialState unless opts[:initial]
-          
+
           write_inheritable_attribute :states, {}
-          write_inheritable_attribute :state_events_table, {}          
+          write_inheritable_attribute :state_events_table, {}
           write_inheritable_attribute :initial_state, opts[:initial]
           write_inheritable_attribute :transition_table, {}
           write_inheritable_attribute :event_table, {}
           write_inheritable_attribute :state_column, opts[:column] || 'state'
-          write_inheritable_attribute :log_transitions, opts[:log_transitions] || false 
+          write_inheritable_attribute :log_transitions, opts[:log_transitions] || false
           write_inheritable_attribute :transitions_logger, opts[:transitions_logger] || :log_transition
           write_inheritable_attribute :validate_on_transitions, opts[:validate_on_transitions] || false
 
@@ -148,7 +151,7 @@ module ScottBarron                   #:nodoc:
           after_create                :run_initial_state_actions
         end
       end
-      
+
       module InstanceMethods
         def set_initial_state #:nodoc:
           write_attribute self.class.state_column, self.class.initial_state.to_s
@@ -159,12 +162,12 @@ module ScottBarron                   #:nodoc:
           initial.entering(self)
           initial.entered(self)
         end
-      
+
         # Returns the current state the object is in, as a Ruby symbol.
         def current_state
           self.send(self.class.state_column).to_sym
         end
-      
+
         # Returns what the next state for a given event would be, as a Ruby symbol.
         def next_state_for_event(event)
           ns = next_states_for_event(event)
@@ -181,16 +184,16 @@ module ScottBarron                   #:nodoc:
           Symbol === action ? self.method(action).call : action.call(self)
         end
         private :run_transition_action
-        
+
         def event=(event_name)
           self.send( (event_name.to_s+'!').to_sym )
         end
-    
+
         def event
           ev = valid_events
           return ev ? ev.first : nil
         end
-        
+
         def event_states_table
           t = {}
           state_events_table.each do |k,v|
@@ -205,11 +208,11 @@ module ScottBarron                   #:nodoc:
         def valid_events_from_state(from_state)
           return state_events_table[from_state]
         end
-        
+
         def valid_events
           valid_events_from_state(current_state)
         end
-        
+
       end
 
       module ClassMethods
@@ -247,14 +250,14 @@ module ScottBarron                   #:nodoc:
         # Example: <tt>order.close_order!</tt>.
         def event(event, opts={}, &block)
           tt = read_inheritable_attribute(:transition_table)
-          state_events_table = read_inheritable_attribute(:state_events_table)          
+          state_events_table = read_inheritable_attribute(:state_events_table)
 
           et = read_inheritable_attribute(:event_table)
           e = et[event.to_sym] = SupportingClasses::Event.new(event, opts, tt, state_events_table, &block)
 
           define_method("#{event.to_s}!") { e.fire(self) }
         end
-        
+
         # Define a state of the system. +state+ can take an optional Proc object
         # which will be executed every time the system transitions into that
         # state.  The proc will be passed the current object.
@@ -272,10 +275,10 @@ module ScottBarron                   #:nodoc:
           read_inheritable_attribute(:states)[name.to_sym] = state
 
           state_events_table[name.to_sym] = []
-        
+
           define_method("#{state.name}?") { current_state == state.name }
         end
-        
+
         # Wraps ActiveRecord::Base.find to conveniently find all records in
         # a given state.  Options:
         #
@@ -287,7 +290,7 @@ module ScottBarron                   #:nodoc:
             find(number, *args)
           end
         end
-        
+
         # Wraps ActiveRecord::Base.count to conveniently count all records in
         # a given state.  Options:
         #
@@ -298,7 +301,7 @@ module ScottBarron                   #:nodoc:
             count(*args)
           end
         end
-        
+
         # Wraps ActiveRecord::Base.calculate to conveniently calculate all records in
         # a given state.  Options:
         #
@@ -309,11 +312,11 @@ module ScottBarron                   #:nodoc:
             calculate(*args)
           end
         end
-        
+
         protected
         def with_state_scope(state)
           raise InvalidState unless states.include?(state)
-          
+
           with_scope :find => {:conditions => ["#{table_name}.#{state_column} = ?", state.to_s]} do
             yield if block_given?
           end
