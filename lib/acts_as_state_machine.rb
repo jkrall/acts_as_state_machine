@@ -106,7 +106,7 @@ module ScottBarron                   #:nodoc:
               break true if transition.perform(record)
             end
 						unless result == true
-							record.errors.add('', "Could not perform state machine transition: #{name}")
+							record.errors.add('fire', "Could not perform state machine transition: #{name}")
             	raise ActiveRecord::RecordInvalid.new(record)
 						end
             true
