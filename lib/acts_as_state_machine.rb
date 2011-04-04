@@ -62,14 +62,14 @@ module ScottBarron                   #:nodoc:
             record.class.transaction do
               next_state.entering(record) unless loopback
 
-              record.update_attribute(record.class.state_column, to.to_s)
+              result = record.update_attribute(record.class.state_column, to.to_s)
               if record.class.read_inheritable_attribute(:log_transitions)
                 record.send(record.class.read_inheritable_attribute(:transitions_logger), @from, @to, @event, opts)
               end
 
               next_state.entered(record) unless loopback
               old_state.exited(record) unless loopback
-              true
+              result
             end
           end
 
